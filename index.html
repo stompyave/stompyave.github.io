@@ -99,9 +99,20 @@
         setLogLevel('debug');
 
         // Global variables for Firebase configuration
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+    const firebaseConfig = {
+      apiKey: "AIzaSyCpMxICBcoNU6HqkpO4uh1vq10kE0U1yk4",
+      authDomain: "stompyave.firebaseapp.com",
+      projectId: "stompyave",
+      storageBucket: "stompyave.firebasestorage.app",
+      messagingSenderId: "798943688217",
+      appId: "1:798943688217:web:d3d8e00665078836ca5c88",
+      measurementId: "G-GNN6L9MB0C"
+    };
+        
+    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
         // Message box utility
         const messageBox = document.getElementById('message-box');
