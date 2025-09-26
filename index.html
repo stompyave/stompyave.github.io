@@ -11,7 +11,7 @@
       font-family: 'Inter', sans-serif;
       background: linear-gradient(135deg, #f0f4f8 0%, #d9e2ec 100%);
       color: #2d3748;
-      height: 100vh;
+      min-height: 100vh; /* allow scrolling */
     }
 
     .mood-circle {
@@ -27,7 +27,6 @@
       background: #cbd5e0;
       border-radius: 4px;
       outline: none;
-      transition: background 0.2s ease-in-out;
     }
 
     input[type="range"]::-webkit-slider-thumb {
@@ -48,9 +47,23 @@
       cursor: pointer;
       border: 2px solid #ffffff;
     }
+
+    .gender-btn {
+      font-size: 1.5rem;
+      padding: 0.5rem 1rem;
+      border-radius: 9999px;
+      cursor: pointer;
+      transition: transform 0.2s, background-color 0.2s;
+    }
+    .gender-btn:hover {
+      transform: scale(1.1);
+    }
+    .gender-selected {
+      box-shadow: 0 0 0 3px rgba(0,0,0,0.3);
+    }
   </style>
 </head>
-<body class="flex flex-col items-center justify-center p-4">
+<body class="flex flex-col items-center justify-start p-4">
   <div class="max-w-xl w-full p-8 bg-white rounded-3xl shadow-2xl space-y-8 text-center border border-gray-200">
     <h1 class="text-4xl font-bold text-gray-800 mb-2">Our Moods <3</h1>
     <p class="text-gray-500 mb-8">Move the sliders to set your current mood :3</p>
@@ -62,6 +75,13 @@
         <div id="your-circle" class="mood-circle rounded-full border-4 border-white shadow-lg"></div>
         <input id="your-mood-slider" type="range" min="0" max="100" value="50" class="w-full">
         <span id="your-mood-value" class="text-lg font-medium text-gray-600">50</span>
+
+        <!-- Your Gender -->
+        <div class="flex space-x-4 mt-4" id="your-gender-buttons">
+          <button class="gender-btn bg-pink-200" data-gender="female">♀</button>
+          <button class="gender-btn bg-yellow-200" data-gender="neutral">⚧</button>
+          <button class="gender-btn bg-blue-200" data-gender="male">♂</button>
+        </div>
       </div>
 
       <!-- Partner Mood -->
@@ -70,6 +90,9 @@
         <div id="partner-circle" class="mood-circle rounded-full border-4 border-white shadow-lg"></div>
         <input id="partner-mood-slider" type="range" min="0" max="100" value="50" class="w-full" disabled>
         <span id="partner-mood-value" class="text-lg font-medium text-gray-600">50</span>
+
+        <!-- Partner Gender (read-only) -->
+        <div id="partner-gender" class="text-3xl mt-4"></div>
       </div>
     </div>
 
@@ -89,7 +112,7 @@
     </div>
 
     <p id="user-id-display" class="text-xs text-gray-400 mt-6"></p>
-    <div id="message-box" class="hidden fixed top-4 right-4 bg-blue-500 text-white p-4 rounded-lg shadow-xl z-50 transition-transform transform duration-300"></div>
+    <div id="message-box" class="hidden fixed top-4 right-4 bg-blue-500 text-white p-4 rounded-lg shadow-xl z-50"></div>
   </div>
 
   <!-- Firebase SDKs -->
@@ -116,13 +139,8 @@
     const messageBox = document.getElementById('message-box');
     function showMessage(message, duration = 3000) {
       messageBox.textContent = message;
-      messageBox.classList.remove('hidden', 'translate-x-full');
-      messageBox.classList.add('translate-x-0');
-      setTimeout(() => {
-        messageBox.classList.remove('translate-x-0');
-        messageBox.classList.add('translate-x-full');
-        setTimeout(() => { messageBox.classList.add('hidden'); }, 300);
-      }, duration);
+      messageBox.classList.remove('hidden');
+      setTimeout(() => { messageBox.classList.add('hidden'); }, duration);
     }
 
     let db, auth, userId;
@@ -145,6 +163,7 @@
             setupRealtimeUpdates();
             setupSliderListeners();
             setupNoteListeners();
+            setupGenderListeners();
             showMessage("Successfully signed in.");
           } else {
             try {
@@ -172,16 +191,12 @@
       onSnapshot(docRef, (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
-          if (!isDraggingSlider) {
-            updateUI(data);
-          }
+          if (!isDraggingSlider) updateUI(data);
           updateNotes(data);
+          updateGenders(data);
         } else {
-          setDoc(docRef, { yourMood: 50, partnerMood: 50, [`${userId}`]: 50, [`${userId}_note`]: "" });
+          setDoc(docRef, { [`${userId}`]: 50, [`${userId}_note`]: "", [`${userId}_gender`]: "" });
         }
-      }, (error) => {
-        console.error("Realtime error:", error);
-        showMessage("Failed to get real-time updates.");
       });
     }
 
@@ -201,7 +216,9 @@
         updateMoodCircle(yourCircle, yourMood);
       }
 
-      const otherUserId = Object.keys(data).find(key => !key.includes("_note") && key !== 'yourMood' && key !== 'partnerMood' && key !== `${userId}`);
+      const otherUserId = Object.keys(data).find(key =>
+        !key.includes("_note") && !key.includes("_gender") && key !== `${userId}`
+      );
       if (otherUserId && data[otherUserId] !== undefined) {
         const partnerMood = data[otherUserId];
         partnerSlider.value = partnerMood;
@@ -218,24 +235,38 @@
         yourNoteBox.value = data[`${userId}_note`];
       }
 
-      const otherUserId = Object.keys(data).find(key => key.endsWith("_note") && key !== `${userId}_note`);
-      if (otherUserId && data[otherUserId] !== undefined) {
-        partnerNoteBox.value = data[otherUserId];
+      const otherUserNoteKey = Object.keys(data).find(key => key.endsWith("_note") && key !== `${userId}_note`);
+      if (otherUserNoteKey) partnerNoteBox.value = data[otherUserNoteKey];
+    }
+
+    function updateGenders(data) {
+      // Highlight your gender button
+      if (data[`${userId}_gender`]) {
+        const buttons = document.querySelectorAll("#your-gender-buttons .gender-btn");
+        buttons.forEach(b => {
+          b.classList.remove("gender-selected");
+          if (b.dataset.gender === data[`${userId}_gender`]) {
+            b.classList.add("gender-selected");
+          }
+        });
+      }
+
+      // Show partner's gender
+      const partnerGenderBox = document.getElementById('partner-gender');
+      const otherUserGenderKey = Object.keys(data).find(key => key.endsWith("_gender") && key !== `${userId}_gender`);
+      if (otherUserGenderKey) {
+        const g = data[otherUserGenderKey];
+        partnerGenderBox.textContent = g === "female" ? "♀" : g === "male" ? "♂" : g === "neutral" ? "⚧" : "";
       }
     }
 
     function updateMoodCircle(circleElement, moodValue) {
       const mood = parseInt(moodValue);
       circleElement.className = 'mood-circle rounded-full border-4 border-white shadow-lg';
-      if (mood < 25) {
-        circleElement.classList.add('bg-red-200');
-      } else if (mood < 50) {
-        circleElement.classList.add('bg-yellow-200');
-      } else if (mood < 75) {
-        circleElement.classList.add('bg-lime-200');
-      } else {
-        circleElement.classList.add('bg-green-200');
-      }
+      if (mood < 25) circleElement.classList.add('bg-red-200');
+      else if (mood < 50) circleElement.classList.add('bg-yellow-200');
+      else if (mood < 75) circleElement.classList.add('bg-lime-200');
+      else circleElement.classList.add('bg-green-200');
     }
 
     function setupSliderListeners() {
@@ -245,17 +276,11 @@
       yourSlider.addEventListener('input', (event) => {
         clearTimeout(dragTimeout);
         isDraggingSlider = true;
-
         const moodValue = event.target.value;
         document.getElementById('your-mood-value').textContent = moodValue;
         updateMoodCircle(document.getElementById('your-circle'), moodValue);
 
-        setDoc(docRef, { [`${userId}`]: parseInt(moodValue) }, { merge: true })
-          .catch(e => {
-            console.error("Failed to update Firestore:", e);
-            showMessage("Failed to save mood.");
-          });
-
+        setDoc(docRef, { [`${userId}`]: parseInt(moodValue) }, { merge: true });
         dragTimeout = setTimeout(() => { isDraggingSlider = false; }, 500);
       });
     }
@@ -265,12 +290,21 @@
       const docRef = doc(db, moodCollectionPath, moodDocId);
 
       yourNoteBox.addEventListener('input', (event) => {
-        const noteValue = event.target.value;
-        setDoc(docRef, { [`${userId}_note`]: noteValue }, { merge: true })
-          .catch(e => {
-            console.error("Failed to update note:", e);
-            showMessage("Failed to save note.");
-          });
+        setDoc(docRef, { [`${userId}_note`]: event.target.value }, { merge: true });
+      });
+    }
+
+    function setupGenderListeners() {
+      const buttons = document.querySelectorAll("#your-gender-buttons .gender-btn");
+      const docRef = doc(db, moodCollectionPath, moodDocId);
+
+      buttons.forEach(btn => {
+        btn.addEventListener("click", () => {
+          buttons.forEach(b => b.classList.remove("gender-selected"));
+          btn.classList.add("gender-selected");
+          const genderValue = btn.dataset.gender;
+          setDoc(docRef, { [`${userId}_gender`]: genderValue }, { merge: true });
+        });
       });
     }
   </script>
