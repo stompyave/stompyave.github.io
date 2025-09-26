@@ -1,174 +1,192 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, onSnapshot, setDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mood Sliders</title>
+</head>
+<body>
+  <!-- UI Elements -->
+  <div id="message-box" class="hidden"></div>
+  <p id="user-id-display"></p>
 
-// Enable debug logging for Firestore
-setLogLevel('debug');
+  <div>
+    <label for="your-mood-slider">Your Mood:</label>
+    <input id="your-mood-slider" type="range" min="0" max="100" value="50" />
+    <span id="your-mood-value">50</span>
+    <div id="your-circle" class="mood-circle"></div>
+  </div>
 
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-const firebaseConfig = {
-    apiKey: "AIzaSyCpMxICBcoNU6HqkpO4uh1vq10kE0U1yk4",
-    authDomain: "stompyave.firebaseapp.com",
-    projectId: "stompyave",
-    storageBucket: "stompyave.firebasestorage.app",
-    messagingSenderId: "798943688217",
-    appId: "1:798943688217:web:d3d8e00665078836ca5c88",
-    measurementId: "G-GNN6L9MB0C"
-};
+  <div>
+    <label for="partner-mood-slider">Partner’s Mood:</label>
+    <input id="partner-mood-slider" type="range" min="0" max="100" value="50" disabled />
+    <span id="partner-mood-value">50</span>
+    <div id="partner-circle" class="mood-circle"></div>
+  </div>
 
-const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+  <!-- ✅ Important: type="module" so imports work -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, onSnapshot, setDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-const messageBox = document.getElementById('message-box');
-function showMessage(message, duration = 3000) {
-    messageBox.textContent = message;
-    messageBox.classList.remove('hidden', 'translate-x-full');
-    messageBox.classList.add('translate-x-0');
-    setTimeout(() => {
+    // Enable debug logging for Firestore
+    setLogLevel('debug');
+
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+    const firebaseConfig = {
+      apiKey: "AIzaSyCpMxICBcoNU6HqkpO4uh1vq10kE0U1yk4",
+      authDomain: "stompyave.firebaseapp.com",
+      projectId: "stompyave",
+      storageBucket: "stompyave.firebasestorage.app",
+      messagingSenderId: "798943688217",
+      appId: "1:798943688217:web:d3d8e00665078836ca5c88",
+      measurementId: "G-GNN6L9MB0C"
+    };
+
+    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+    const messageBox = document.getElementById('message-box');
+    function showMessage(message, duration = 3000) {
+      messageBox.textContent = message;
+      messageBox.classList.remove('hidden', 'translate-x-full');
+      messageBox.classList.add('translate-x-0');
+      setTimeout(() => {
         messageBox.classList.remove('translate-x-0');
         messageBox.classList.add('translate-x-full');
         setTimeout(() => {
-            messageBox.classList.add('hidden');
+          messageBox.classList.add('hidden');
         }, 300);
-    }, duration);
-}
+      }, duration);
+    }
 
-let db, auth, userId;
-const moodDocId = 'current_moods';
-const moodCollectionPath = `/artifacts/${appId}/public/data/mood-meters`;
+    let db, auth, userId;
+    const moodDocId = 'current_moods';
+    const moodCollectionPath = `/artifacts/${appId}/public/data/mood-meters`;
 
-// A flag to prevent the onSnapshot listener from updating the UI while a user is dragging their slider
-let isDraggingSlider = false;
-// A timer to handle when to turn the flag off
-let dragTimeout;
+    // A flag to prevent the onSnapshot listener from updating the UI while a user is dragging their slider
+    let isDraggingSlider = false;
+    let dragTimeout;
 
-window.onload = function() {
-    try {
+    window.onload = function() {
+      try {
         const app = initializeApp(firebaseConfig);
         db = getFirestore(app);
         auth = getAuth(app);
 
         onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                userId = user.uid;
-                document.getElementById('user-id-display').textContent = `Your User ID: ${userId}`;
-                setupRealtimeUpdates();
-                setupSliderListeners();
-                showMessage("Successfully signed in.");
-            } else {
-                try {
-                    if (initialAuthToken) {
-                        await signInWithCustomToken(auth, initialAuthToken);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
-                } catch (error) {
-                    console.error("Authentication error:", error);
-                    showMessage("Authentication failed. Please try again.");
-                }
+          if (user) {
+            userId = user.uid;
+            document.getElementById('user-id-display').textContent = `Your User ID: ${userId}`;
+            setupRealtimeUpdates();
+            setupSliderListeners();
+            showMessage("Successfully signed in.");
+          } else {
+            try {
+              if (initialAuthToken) {
+                await signInWithCustomToken(auth, initialAuthToken);
+              } else {
+                await signInAnonymously(auth);
+              }
+            } catch (error) {
+              console.error("Authentication error:", error);
+              showMessage("Authentication failed. Please try again.");
             }
+          }
         });
-    } catch (e) {
+      } catch (e) {
         console.error("Firebase Initialization Error:", e);
         showMessage("Failed to initialize the application.");
-    }
-};
+      }
+    };
 
-function setupRealtimeUpdates() {
-    if (!userId) {
+    function setupRealtimeUpdates() {
+      if (!userId) {
         console.warn("User ID not available, skipping Firestore setup.");
         return;
-    }
+      }
 
-    const docRef = doc(db, moodCollectionPath, moodDocId);
-    onSnapshot(docRef, (docSnap) => {
+      const docRef = doc(db, moodCollectionPath, moodDocId);
+      onSnapshot(docRef, (docSnap) => {
         if (docSnap.exists()) {
-            const data = docSnap.data();
-            // Only update the UI if the slider is not being actively dragged
-            if (!isDraggingSlider) {
-                updateUI(data);
-            }
+          const data = docSnap.data();
+          if (!isDraggingSlider) {
+            updateUI(data);
+          }
         } else {
-            console.log("No data found, creating initial document.");
-            setDoc(docRef, { yourMood: 50, partnerMood: 50, [`${userId}`]: 50 });
+          console.log("No data found, creating initial document.");
+          setDoc(docRef, { yourMood: 50, partnerMood: 50, [`${userId}`]: 50 });
         }
-    }, (error) => {
+      }, (error) => {
         console.error("Failed to get realtime updates:", error);
         showMessage("Failed to get real-time updates.");
-    });
-}
+      });
+    }
 
-function updateUI(data) {
-    const yourSlider = document.getElementById('your-mood-slider');
-    const yourValueSpan = document.getElementById('your-mood-value');
-    const yourCircle = document.getElementById('your-circle');
+    function updateUI(data) {
+      const yourSlider = document.getElementById('your-mood-slider');
+      const yourValueSpan = document.getElementById('your-mood-value');
+      const yourCircle = document.getElementById('your-circle');
 
-    const partnerSlider = document.getElementById('partner-mood-slider');
-    const partnerValueSpan = document.getElementById('partner-mood-value');
-    const partnerCircle = document.getElementById('partner-circle');
+      const partnerSlider = document.getElementById('partner-mood-slider');
+      const partnerValueSpan = document.getElementById('partner-mood-value');
+      const partnerCircle = document.getElementById('partner-circle');
 
-    // Update your mood if it's in the data
-    if (data[`${userId}`] !== undefined) {
+      if (data[`${userId}`] !== undefined) {
         const yourMood = data[`${userId}`];
         yourSlider.value = yourMood;
         yourValueSpan.textContent = yourMood;
         updateMoodCircle(yourCircle, yourMood);
-    }
+      }
 
-    // Find and update the partner's mood
-    const otherUserId = Object.keys(data).find(key => key !== 'yourMood' && key !== 'partnerMood' && key !== `${userId}`);
-    if (otherUserId && data[otherUserId] !== undefined) {
+      const otherUserId = Object.keys(data).find(
+        key => key !== 'yourMood' && key !== 'partnerMood' && key !== `${userId}`
+      );
+      if (otherUserId && data[otherUserId] !== undefined) {
         const partnerMood = data[otherUserId];
         partnerSlider.value = partnerMood;
         partnerValueSpan.textContent = partnerMood;
         updateMoodCircle(partnerCircle, partnerMood);
-    } else {
+      } else {
         partnerSlider.value = 50;
         partnerValueSpan.textContent = 50;
         updateMoodCircle(partnerCircle, 50);
+      }
     }
-}
 
-// Function to correctly update the mood circle with the custom CSS classes
-function updateMoodCircle(circleElement, moodValue) {
-    const mood = parseInt(moodValue);
-    circleElement.className = 'mood-circle rounded-full border-4 border-white shadow-lg';
-    if (mood < 25) {
+    function updateMoodCircle(circleElement, moodValue) {
+      const mood = parseInt(moodValue);
+      circleElement.className = 'mood-circle rounded-full border-4 border-white shadow-lg';
+      if (mood < 25) {
         circleElement.classList.add('mood-color-0');
-    } else if (mood < 50) {
+      } else if (mood < 50) {
         circleElement.classList.add('mood-color-25');
-    } else if (mood < 75) {
+      } else if (mood < 75) {
         circleElement.classList.add('mood-color-75');
-    } else {
+      } else {
         circleElement.classList.add('mood-color-100');
+      }
     }
-}
 
-function setupSliderListeners() {
-    const yourSlider = document.getElementById('your-mood-slider');
-    const docRef = doc(db, moodCollectionPath, moodDocId);
-    
-    // Listen for the 'input' event, which fires continuously while dragging
-    yourSlider.addEventListener('input', (event) => {
-        // Clear any existing timer and set the flag to true
+    function setupSliderListeners() {
+      const yourSlider = document.getElementById('your-mood-slider');
+      const docRef = doc(db, moodCollectionPath, moodDocId);
+
+      yourSlider.addEventListener('input', (event) => {
         clearTimeout(dragTimeout);
         isDraggingSlider = true;
 
         const moodValue = event.target.value;
         document.getElementById('your-mood-value').textContent = moodValue;
         updateMoodCircle(document.getElementById('your-circle'), moodValue);
-        
-        // Update Firestore document with the new mood value
-        setDoc(docRef, { [`${userId}`]: parseInt(moodValue) }, { merge: true }).catch(e => {
+
+        setDoc(docRef, { [`${userId}`]: parseInt(moodValue) }, { merge: true })
+          .catch(e => {
             console.error("Failed to update Firestore:", e);
             showMessage("Failed to save mood.");
-        });
-    });
-
-    // Listen for the 'change' event, which fires only when the user releases the slider
-    yourSlider.addEventListener('change', () => {
-        // Set a short timer to allow the final Firestore update to sync before allowing the UI to be updated by the listener
-        dragTimeout = setTimeout(() => {
-            isDraggingSlider = false;
-        }, 500); // 500ms delay
-    });
-}
+          });
+      });
+    }
+  </script>
+</body>
+</html>
