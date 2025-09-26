@@ -36,8 +36,10 @@ let db, auth, userId;
 const moodDocId = 'current_moods';
 const moodCollectionPath = `/artifacts/${appId}/public/data/mood-meters`;
 
-// Add a new variable to act as a flag
-let isUpdatingSlider = false;
+// A flag to prevent the onSnapshot listener from updating the UI while a user is dragging their slider
+let isDraggingSlider = false;
+// A timer to handle when to turn the flag off
+let dragTimeout;
 
 window.onload = function() {
     try {
@@ -81,8 +83,8 @@ function setupRealtimeUpdates() {
     onSnapshot(docRef, (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data();
-            // Only update the UI if the slider isn't being actively dragged
-            if (!isUpdatingSlider) {
+            // Only update the UI if the slider is not being actively dragged
+            if (!isDraggingSlider) {
                 updateUI(data);
             }
         } else {
@@ -105,7 +107,7 @@ function updateUI(data) {
     const partnerCircle = document.getElementById('partner-circle');
 
     // Update your mood if it's in the data
-    if (data[`${userId}`]) {
+    if (data[`${userId}`] !== undefined) {
         const yourMood = data[`${userId}`];
         yourSlider.value = yourMood;
         yourValueSpan.textContent = yourMood;
@@ -114,7 +116,7 @@ function updateUI(data) {
 
     // Find and update the partner's mood
     const otherUserId = Object.keys(data).find(key => key !== 'yourMood' && key !== 'partnerMood' && key !== `${userId}`);
-    if (otherUserId && data[otherUserId]) {
+    if (otherUserId && data[otherUserId] !== undefined) {
         const partnerMood = data[otherUserId];
         partnerSlider.value = partnerMood;
         partnerValueSpan.textContent = partnerMood;
@@ -126,27 +128,30 @@ function updateUI(data) {
     }
 }
 
+// Function to correctly update the mood circle with the custom CSS classes
 function updateMoodCircle(circleElement, moodValue) {
     const mood = parseInt(moodValue);
     circleElement.className = 'mood-circle rounded-full border-4 border-white shadow-lg';
     if (mood < 25) {
-        circleElement.classList.add('bg-red-200');
+        circleElement.classList.add('mood-color-0');
     } else if (mood < 50) {
-        circleElement.classList.add('bg-yellow-200');
+        circleElement.classList.add('mood-color-25');
     } else if (mood < 75) {
-        circleElement.classList.add('bg-lime-200');
+        circleElement.classList.add('mood-color-75');
     } else {
-        circleElement.classList.add('bg-green-200');
+        circleElement.classList.add('mood-color-100');
     }
 }
 
 function setupSliderListeners() {
     const yourSlider = document.getElementById('your-mood-slider');
     const docRef = doc(db, moodCollectionPath, moodDocId);
-
+    
+    // Listen for the 'input' event, which fires continuously while dragging
     yourSlider.addEventListener('input', (event) => {
-        // Set the flag to true to prevent the onSnapshot listener from updating the UI
-        isUpdatingSlider = true;
+        // Clear any existing timer and set the flag to true
+        clearTimeout(dragTimeout);
+        isDraggingSlider = true;
 
         const moodValue = event.target.value;
         document.getElementById('your-mood-value').textContent = moodValue;
@@ -159,11 +164,11 @@ function setupSliderListeners() {
         });
     });
 
-    // Add a 'change' event listener to set the flag back to false
+    // Listen for the 'change' event, which fires only when the user releases the slider
     yourSlider.addEventListener('change', () => {
-        // Use a small delay to ensure the last Firestore update is received before we resume UI updates
-        setTimeout(() => {
-            isUpdatingSlider = false;
+        // Set a short timer to allow the final Firestore update to sync before allowing the UI to be updated by the listener
+        dragTimeout = setTimeout(() => {
+            isDraggingSlider = false;
         }, 500); // 500ms delay
     });
 }
