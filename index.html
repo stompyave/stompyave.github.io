@@ -1,260 +1,169 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Our Moods <3 </title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background: linear-gradient(135deg, #f0f4f8 0%, #d9e2ec 100%);
-            color: #2d3748;
-            height: 100vh;
-        }
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getFirestore, doc, onSnapshot, setDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        .mood-circle {
-            transition: background-color 0.3s ease-in-out;
-            width: 100px;
-            height: 100px;
-        }
+// Enable debug logging for Firestore
+setLogLevel('debug');
 
-        /* Custom slider styles */
-        input[type="range"] {
-            -webkit-appearance: none;
-            width: 100%;
-            height: 8px;
-            background: #cbd5e0;
-            border-radius: 4px;
-            outline: none;
-            transition: background 0.2s ease-in-out;
-        }
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+const firebaseConfig = {
+    apiKey: "AIzaSyCpMxICBcoNU6HqkpO4uh1vq10kE0U1yk4",
+    authDomain: "stompyave.firebaseapp.com",
+    projectId: "stompyave",
+    storageBucket: "stompyave.firebasestorage.app",
+    messagingSenderId: "798943688217",
+    appId: "1:798943688217:web:d3d8e00665078836ca5c88",
+    measurementId: "G-GNN6L9MB0C"
+};
 
-        input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 24px;
-            height: 24px;
-            background: #4a5568;
-            border-radius: 50%;
-            cursor: pointer;
-            border: 2px solid #ffffff;
-            transition: background-color 0.2s ease-in-out;
-        }
+const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
-        input[type="range"]::-moz-range-thumb {
-            width: 24px;
-            height: 24px;
-            background: #4a5568;
-            border-radius: 50%;
-            cursor: pointer;
-            border: 2px solid #ffffff;
-            transition: background-color 0.2s ease-in-out;
-        }
+const messageBox = document.getElementById('message-box');
+function showMessage(message, duration = 3000) {
+    messageBox.textContent = message;
+    messageBox.classList.remove('hidden', 'translate-x-full');
+    messageBox.classList.add('translate-x-0');
+    setTimeout(() => {
+        messageBox.classList.remove('translate-x-0');
+        messageBox.classList.add('translate-x-full');
+        setTimeout(() => {
+            messageBox.classList.add('hidden');
+        }, 300);
+    }, duration);
+}
 
-        .mood-color-0 { background: #fee2e2; }
-        .mood-color-25 { background: #fecaca; }
-        .mood-color-50 { background: #fde68a; }
-        .mood-color-75 { background: #bbf7d0; }
-        .mood-color-100 { background: #86efac; }
-    </style>
-</head>
-<body class="flex flex-col items-center justify-center p-4">
-    <div class="max-w-xl w-full p-8 bg-white rounded-3xl shadow-2xl space-y-8 text-center border border-gray-200">
-        <h1 class="text-4xl font-bold text-gray-800 mb-2">Our Moods <3</h1>
-        <p class="text-gray-500 mb-8">Move the sliders to set your current mood :3</p>
+let db, auth, userId;
+const moodDocId = 'current_moods';
+const moodCollectionPath = `/artifacts/${appId}/public/data/mood-meters`;
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <!-- Your Mood Meter -->
-            <div class="flex flex-col items-center space-y-4 p-6 bg-gray-50 rounded-2xl shadow-inner border border-gray-100">
-                <h2 class="text-2xl font-semibold text-gray-700">My Mood</h2>
-                <div id="your-circle" class="mood-circle rounded-full border-4 border-white shadow-lg"></div>
-                <input id="your-mood-slider" type="range" min="0" max="100" value="50" class="w-full">
-                <span id="your-mood-value" class="text-lg font-medium text-gray-600">50</span>
-            </div>
+// Add a new variable to act as a flag
+let isUpdatingSlider = false;
 
-            <!-- Partner's Mood Meter -->
-            <div class="flex flex-col items-center space-y-4 p-6 bg-gray-50 rounded-2xl shadow-inner border border-gray-100">
-                <h2 class="text-2xl font-semibold text-gray-700">My Partner's Mood</h2>
-                <div id="partner-circle" class="mood-circle rounded-full border-4 border-white shadow-lg"></div>
-                <input id="partner-mood-slider" type="range" min="0" max="100" value="50" class="w-full" disabled>
-                <span id="partner-mood-value" class="text-lg font-medium text-gray-600">50</span>
-            </div>
-        </div>
-        
-        <p id="user-id-display" class="text-xs text-gray-400 mt-6"></p>
+window.onload = function() {
+    try {
+        const app = initializeApp(firebaseConfig);
+        db = getFirestore(app);
+        auth = getAuth(app);
 
-        <!-- Message box for user notifications -->
-        <div id="message-box" class="hidden fixed top-4 right-4 bg-blue-500 text-white p-4 rounded-lg shadow-xl z-50 transition-transform transform duration-300"></div>
-    </div>
-
-    <!-- Firebase SDKs -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, onSnapshot, setDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // Enable debug logging for Firestore
-        setLogLevel('debug');
-
-        // Global variables for Firebase configuration
-        // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-    const firebaseConfig = {
-      apiKey: "AIzaSyCpMxICBcoNU6HqkpO4uh1vq10kE0U1yk4",
-      authDomain: "stompyave.firebaseapp.com",
-      projectId: "stompyave",
-      storageBucket: "stompyave.firebasestorage.app",
-      messagingSenderId: "798943688217",
-      appId: "1:798943688217:web:d3d8e00665078836ca5c88",
-      measurementId: "G-GNN6L9MB0C"
-    };
-        
-    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-        // Message box utility
-        const messageBox = document.getElementById('message-box');
-        function showMessage(message, duration = 3000) {
-            messageBox.textContent = message;
-            messageBox.classList.remove('hidden', 'translate-x-full');
-            messageBox.classList.add('translate-x-0');
-            setTimeout(() => {
-                messageBox.classList.remove('translate-x-0');
-                messageBox.classList.add('translate-x-full');
-                setTimeout(() => {
-                    messageBox.classList.add('hidden');
-                }, 300);
-            }, duration);
-        }
-
-        // --- Firebase Initialization and Auth ---
-        let db, auth, userId;
-        const moodDocId = 'current_moods';
-        const moodCollectionPath = `/artifacts/${appId}/public/data/mood-meters`;
-
-        // Wait for the window to load before starting the app
-        window.onload = function() {
-            try {
-                // Initialize Firebase
-                const app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-
-                // Sign in the user
-                onAuthStateChanged(auth, async (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        document.getElementById('user-id-display').textContent = `Your User ID: ${userId}`;
-                        setupRealtimeUpdates();
-                        setupSliderListeners();
-                        showMessage("Successfully signed in.");
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                userId = user.uid;
+                document.getElementById('user-id-display').textContent = `Your User ID: ${userId}`;
+                setupRealtimeUpdates();
+                setupSliderListeners();
+                showMessage("Successfully signed in.");
+            } else {
+                try {
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(auth, initialAuthToken);
                     } else {
-                        try {
-                            if (initialAuthToken) {
-                                await signInWithCustomToken(auth, initialAuthToken);
-                            } else {
-                                await signInAnonymously(auth);
-                            }
-                        } catch (error) {
-                            console.error("Authentication error:", error);
-                            showMessage("Authentication failed. Please try again.");
-                        }
+                        await signInAnonymously(auth);
                     }
-                });
-            } catch (e) {
-                console.error("Firebase Initialization Error:", e);
-                showMessage("Failed to initialize the application.");
-            }
-        };
-
-        // --- Firestore Realtime Listener ---
-        function setupRealtimeUpdates() {
-            if (!userId) {
-                console.warn("User ID not available, skipping Firestore setup.");
-                return;
-            }
-
-            const docRef = doc(db, moodCollectionPath, moodDocId);
-            onSnapshot(docRef, (docSnap) => {
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    updateUI(data);
-                } else {
-                    console.log("No data found, creating initial document.");
-                    // Create an initial document if it doesn't exist
-                    setDoc(docRef, { yourMood: 50, partnerMood: 50, [`${userId}`]: 50 });
+                } catch (error) {
+                    console.error("Authentication error:", error);
+                    showMessage("Authentication failed. Please try again.");
                 }
-            }, (error) => {
-                console.error("Failed to get realtime updates:", error);
-                showMessage("Failed to get real-time updates.");
-            });
-        }
-
-        // --- UI Update Function ---
-        function updateUI(data) {
-            const yourSlider = document.getElementById('your-mood-slider');
-            const yourValueSpan = document.getElementById('your-mood-value');
-            const yourCircle = document.getElementById('your-circle');
-            
-            const partnerSlider = document.getElementById('partner-mood-slider');
-            const partnerValueSpan = document.getElementById('partner-mood-value');
-            const partnerCircle = document.getElementById('partner-circle');
-
-            if (data[`${userId}`]) {
-                const yourMood = data[`${userId}`];
-                yourSlider.value = yourMood;
-                yourValueSpan.textContent = yourMood;
-                updateMoodCircle(yourCircle, yourMood);
             }
+        });
+    } catch (e) {
+        console.error("Firebase Initialization Error:", e);
+        showMessage("Failed to initialize the application.");
+    }
+};
 
-            // Find the other user's ID to display their mood
-            const otherUserId = Object.keys(data).find(key => key !== 'yourMood' && key !== 'partnerMood' && key !== `${userId}`);
-            if (otherUserId && data[otherUserId]) {
-                const partnerMood = data[otherUserId];
-                partnerSlider.value = partnerMood;
-                partnerValueSpan.textContent = partnerMood;
-                updateMoodCircle(partnerCircle, partnerMood);
-            } else {
-                // If partner data is not found, set to default and show a message
-                partnerSlider.value = 50;
-                partnerValueSpan.textContent = 50;
-                updateMoodCircle(partnerCircle, 50);
+function setupRealtimeUpdates() {
+    if (!userId) {
+        console.warn("User ID not available, skipping Firestore setup.");
+        return;
+    }
+
+    const docRef = doc(db, moodCollectionPath, moodDocId);
+    onSnapshot(docRef, (docSnap) => {
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            // Only update the UI if the slider isn't being actively dragged
+            if (!isUpdatingSlider) {
+                updateUI(data);
             }
+        } else {
+            console.log("No data found, creating initial document.");
+            setDoc(docRef, { yourMood: 50, partnerMood: 50, [`${userId}`]: 50 });
         }
+    }, (error) => {
+        console.error("Failed to get realtime updates:", error);
+        showMessage("Failed to get real-time updates.");
+    });
+}
 
-        function updateMoodCircle(circleElement, moodValue) {
-            const mood = parseInt(moodValue);
-            circleElement.className = 'mood-circle rounded-full border-4 border-white shadow-lg';
-            if (mood < 25) {
-                circleElement.classList.add('bg-red-200');
-            } else if (mood < 50) {
-                circleElement.classList.add('bg-yellow-200');
-            } else if (mood < 75) {
-                circleElement.classList.add('bg-lime-200');
-            } else {
-                circleElement.classList.add('bg-green-200');
-            }
-        }
+function updateUI(data) {
+    const yourSlider = document.getElementById('your-mood-slider');
+    const yourValueSpan = document.getElementById('your-mood-value');
+    const yourCircle = document.getElementById('your-circle');
 
-        // --- Slider Event Handlers ---
-        function setupSliderListeners() {
-            const yourSlider = document.getElementById('your-mood-slider');
-            const docRef = doc(db, moodCollectionPath, moodDocId);
-            
-            yourSlider.addEventListener('input', (event) => {
-                const moodValue = event.target.value;
-                document.getElementById('your-mood-value').textContent = moodValue;
-                updateMoodCircle(document.getElementById('your-circle'), moodValue);
-                
-                // Update Firestore document with the new mood value
-                // Use the user ID as the field name
-                setDoc(docRef, { [`${userId}`]: parseInt(moodValue) }, { merge: true }).catch(e => {
-                    console.error("Failed to update Firestore:", e);
-                    showMessage("Failed to save mood.");
-                });
-            });
-        }
-    </script>
-</body>
-</html>
+    const partnerSlider = document.getElementById('partner-mood-slider');
+    const partnerValueSpan = document.getElementById('partner-mood-value');
+    const partnerCircle = document.getElementById('partner-circle');
+
+    // Update your mood if it's in the data
+    if (data[`${userId}`]) {
+        const yourMood = data[`${userId}`];
+        yourSlider.value = yourMood;
+        yourValueSpan.textContent = yourMood;
+        updateMoodCircle(yourCircle, yourMood);
+    }
+
+    // Find and update the partner's mood
+    const otherUserId = Object.keys(data).find(key => key !== 'yourMood' && key !== 'partnerMood' && key !== `${userId}`);
+    if (otherUserId && data[otherUserId]) {
+        const partnerMood = data[otherUserId];
+        partnerSlider.value = partnerMood;
+        partnerValueSpan.textContent = partnerMood;
+        updateMoodCircle(partnerCircle, partnerMood);
+    } else {
+        partnerSlider.value = 50;
+        partnerValueSpan.textContent = 50;
+        updateMoodCircle(partnerCircle, 50);
+    }
+}
+
+function updateMoodCircle(circleElement, moodValue) {
+    const mood = parseInt(moodValue);
+    circleElement.className = 'mood-circle rounded-full border-4 border-white shadow-lg';
+    if (mood < 25) {
+        circleElement.classList.add('bg-red-200');
+    } else if (mood < 50) {
+        circleElement.classList.add('bg-yellow-200');
+    } else if (mood < 75) {
+        circleElement.classList.add('bg-lime-200');
+    } else {
+        circleElement.classList.add('bg-green-200');
+    }
+}
+
+function setupSliderListeners() {
+    const yourSlider = document.getElementById('your-mood-slider');
+    const docRef = doc(db, moodCollectionPath, moodDocId);
+
+    yourSlider.addEventListener('input', (event) => {
+        // Set the flag to true to prevent the onSnapshot listener from updating the UI
+        isUpdatingSlider = true;
+
+        const moodValue = event.target.value;
+        document.getElementById('your-mood-value').textContent = moodValue;
+        updateMoodCircle(document.getElementById('your-circle'), moodValue);
+        
+        // Update Firestore document with the new mood value
+        setDoc(docRef, { [`${userId}`]: parseInt(moodValue) }, { merge: true }).catch(e => {
+            console.error("Failed to update Firestore:", e);
+            showMessage("Failed to save mood.");
+        });
+    });
+
+    // Add a 'change' event listener to set the flag back to false
+    yourSlider.addEventListener('change', () => {
+        // Use a small delay to ensure the last Firestore update is received before we resume UI updates
+        setTimeout(() => {
+            isUpdatingSlider = false;
+        }, 500); // 500ms delay
+    });
+}
