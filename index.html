@@ -1,36 +1,92 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Mood Sliders</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Our Moods <3</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #f0f4f8 0%, #d9e2ec 100%);
+      color: #2d3748;
+      height: 100vh;
+    }
+
+    .mood-circle {
+      transition: background-color 0.3s ease-in-out;
+      width: 100px;
+      height: 100px;
+    }
+
+    /* Custom slider styles */
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 8px;
+      background: #cbd5e0;
+      border-radius: 4px;
+      outline: none;
+      transition: background 0.2s ease-in-out;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 24px;
+      height: 24px;
+      background: #4a5568;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid #ffffff;
+      transition: background-color 0.2s ease-in-out;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 24px;
+      height: 24px;
+      background: #4a5568;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid #ffffff;
+      transition: background-color 0.2s ease-in-out;
+    }
+  </style>
 </head>
-<body>
-  <!-- UI Elements -->
-  <div id="message-box" class="hidden"></div>
-  <p id="user-id-display"></p>
+<body class="flex flex-col items-center justify-center p-4">
+  <div class="max-w-xl w-full p-8 bg-white rounded-3xl shadow-2xl space-y-8 text-center border border-gray-200">
+    <h1 class="text-4xl font-bold text-gray-800 mb-2">Our Moods <3</h1>
+    <p class="text-gray-500 mb-8">Move the sliders to set your current mood :3</p>
 
-  <div>
-    <label for="your-mood-slider">Your Mood:</label>
-    <input id="your-mood-slider" type="range" min="0" max="100" value="50" />
-    <span id="your-mood-value">50</span>
-    <div id="your-circle" class="mood-circle"></div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <!-- Your Mood -->
+      <div class="flex flex-col items-center space-y-4 p-6 bg-gray-50 rounded-2xl shadow-inner border border-gray-100">
+        <h2 class="text-2xl font-semibold text-gray-700">My Mood</h2>
+        <div id="your-circle" class="mood-circle rounded-full border-4 border-white shadow-lg"></div>
+        <input id="your-mood-slider" type="range" min="0" max="100" value="50" class="w-full">
+        <span id="your-mood-value" class="text-lg font-medium text-gray-600">50</span>
+      </div>
+
+      <!-- Partner Mood -->
+      <div class="flex flex-col items-center space-y-4 p-6 bg-gray-50 rounded-2xl shadow-inner border border-gray-100">
+        <h2 class="text-2xl font-semibold text-gray-700">My Partner's Mood</h2>
+        <div id="partner-circle" class="mood-circle rounded-full border-4 border-white shadow-lg"></div>
+        <input id="partner-mood-slider" type="range" min="0" max="100" value="50" class="w-full" disabled>
+        <span id="partner-mood-value" class="text-lg font-medium text-gray-600">50</span>
+      </div>
+    </div>
+
+    <p id="user-id-display" class="text-xs text-gray-400 mt-6"></p>
+    <div id="message-box" class="hidden fixed top-4 right-4 bg-blue-500 text-white p-4 rounded-lg shadow-xl z-50 transition-transform transform duration-300"></div>
   </div>
 
-  <div>
-    <label for="partner-mood-slider">Partner’s Mood:</label>
-    <input id="partner-mood-slider" type="range" min="0" max="100" value="50" disabled />
-    <span id="partner-mood-value">50</span>
-    <div id="partner-circle" class="mood-circle"></div>
-  </div>
-
-  <!-- ✅ Important: type="module" so imports work -->
+  <!-- Firebase SDKs -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import { getFirestore, doc, onSnapshot, setDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-    // Enable debug logging for Firestore
     setLogLevel('debug');
 
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
@@ -54,9 +110,7 @@
       setTimeout(() => {
         messageBox.classList.remove('translate-x-0');
         messageBox.classList.add('translate-x-full');
-        setTimeout(() => {
-          messageBox.classList.add('hidden');
-        }, 300);
+        setTimeout(() => { messageBox.classList.add('hidden'); }, 300);
       }, duration);
     }
 
@@ -64,7 +118,7 @@
     const moodDocId = 'current_moods';
     const moodCollectionPath = `/artifacts/${appId}/public/data/mood-meters`;
 
-    // A flag to prevent the onSnapshot listener from updating the UI while a user is dragging their slider
+    // Prevent overwrite while dragging
     let isDraggingSlider = false;
     let dragTimeout;
 
@@ -101,24 +155,21 @@
     };
 
     function setupRealtimeUpdates() {
-      if (!userId) {
-        console.warn("User ID not available, skipping Firestore setup.");
-        return;
-      }
-
+      if (!userId) return;
       const docRef = doc(db, moodCollectionPath, moodDocId);
+
       onSnapshot(docRef, (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
+          // ✅ Skip overwriting while user is dragging
           if (!isDraggingSlider) {
             updateUI(data);
           }
         } else {
-          console.log("No data found, creating initial document.");
           setDoc(docRef, { yourMood: 50, partnerMood: 50, [`${userId}`]: 50 });
         }
       }, (error) => {
-        console.error("Failed to get realtime updates:", error);
+        console.error("Realtime error:", error);
         showMessage("Failed to get real-time updates.");
       });
     }
@@ -139,18 +190,12 @@
         updateMoodCircle(yourCircle, yourMood);
       }
 
-      const otherUserId = Object.keys(data).find(
-        key => key !== 'yourMood' && key !== 'partnerMood' && key !== `${userId}`
-      );
+      const otherUserId = Object.keys(data).find(key => key !== 'yourMood' && key !== 'partnerMood' && key !== `${userId}`);
       if (otherUserId && data[otherUserId] !== undefined) {
         const partnerMood = data[otherUserId];
         partnerSlider.value = partnerMood;
         partnerValueSpan.textContent = partnerMood;
         updateMoodCircle(partnerCircle, partnerMood);
-      } else {
-        partnerSlider.value = 50;
-        partnerValueSpan.textContent = 50;
-        updateMoodCircle(partnerCircle, 50);
       }
     }
 
@@ -158,13 +203,13 @@
       const mood = parseInt(moodValue);
       circleElement.className = 'mood-circle rounded-full border-4 border-white shadow-lg';
       if (mood < 25) {
-        circleElement.classList.add('mood-color-0');
+        circleElement.classList.add('bg-red-200');
       } else if (mood < 50) {
-        circleElement.classList.add('mood-color-25');
+        circleElement.classList.add('bg-yellow-200');
       } else if (mood < 75) {
-        circleElement.classList.add('mood-color-75');
+        circleElement.classList.add('bg-lime-200');
       } else {
-        circleElement.classList.add('mood-color-100');
+        circleElement.classList.add('bg-green-200');
       }
     }
 
@@ -185,6 +230,9 @@
             console.error("Failed to update Firestore:", e);
             showMessage("Failed to save mood.");
           });
+
+        // ✅ Reset flag 500ms after dragging stops
+        dragTimeout = setTimeout(() => { isDraggingSlider = false; }, 500);
       });
     }
   </script>
